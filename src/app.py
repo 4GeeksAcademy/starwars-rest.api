@@ -1,6 +1,3 @@
-"""
-This module takes care of starting the API Server, Loading the DB and Adding the endpoints
-"""
 import os
 from flask import Flask, request, jsonify, url_for
 from flask_migrate import Migrate
@@ -8,8 +5,7 @@ from flask_swagger import swagger
 from flask_cors import CORS
 from utils import APIException, generate_sitemap
 from admin import setup_admin
-from models import db, User
-#from models import Person
+from models import db, User, People, Planet, Favorite
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -26,24 +22,154 @@ db.init_app(app)
 CORS(app)
 setup_admin(app)
 
-# Handle/serialize errors like a JSON object
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
     return jsonify(error.to_dict()), error.status_code
 
-# generate sitemap with all your endpoints
 @app.route('/')
 def sitemap():
     return generate_sitemap(app)
 
-@app.route('/user', methods=['GET'])
-def handle_hello():
+@app.route('/people', methods=['GET'])
+def get_people():
+    people = People.query.all()
+    people_list = [person.serialize() for person in people]
+    return jsonify(people_list), 200
 
-    response_body = {
-        "msg": "Hello, this is your GET /user response "
-    }
+@app.route('/people/<int:people_id>', methods=['GET'])
+def get_person(people_id):
+    person = People.query.get(people_id)
+    return jsonify(person.serialize()), 200
 
-    return jsonify(response_body), 200
+@app.route('/planets', methods=['GET'])
+def get_planets():
+    planets = Planet.query.all()
+    planets_list = [planet.serialize() for planet in planets]
+    return jsonify(planets_list), 200
+
+@app.route('/planets/<int:planet_id>', methods=['GET'])
+def get_planet(planet_id):
+    planet = Planet.query.get(planet_id)
+    return jsonify(planet.serialize()), 200
+
+@app.route('/users', methods=['GET'])
+def get_users():
+    users = User.query.all()
+    users_list = [user.serialize() for user in users]
+    return jsonify(users_list), 200
+
+@app.route('/users/favorites', methods=['GET'])
+def get_user_favorites():
+    user_id = request.args.get('user_id')
+    
+    # Print debug information
+    print(f"Received user_id: {user_id}")
+    
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    # Print user information for debugging
+    print(f"Found user: {user.serialize()}")
+    
+    favorites = Favorite.query.filter_by(user_id=user.id).all()
+    
+    # Print favorite information for debugging
+    print(f"Found favorites: {[fav.serialize() for fav in favorites]}")
+    
+    favorites_list = [favorite.serialize() for favorite in favorites]
+    
+    return jsonify(favorites_list), 200
+
+
+@app.route('/favorite/planet/<int:planet_id>', methods=['POST'])
+def add_favorite_planet(planet_id):
+    if request.is_json:
+        user_id = request.json.get('user_id')
+    else:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    favorite = Favorite(user_id=user.id, planet_id=planet_id)
+    db.session.add(favorite)
+    db.session.commit()
+    
+    return jsonify(favorite.serialize()), 201
+
+@app.route('/favorite/people/<int:people_id>', methods=['POST'])
+def add_favorite_people(people_id):
+    if request.is_json:
+        user_id = request.json.get('user_id')
+    else:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    favorite = Favorite(user_id=user.id, people_id=people_id)
+    db.session.add(favorite)
+    db.session.commit()
+    
+    return jsonify(favorite.serialize()), 201
+
+@app.route('/favorite/planet/<int:planet_id>', methods=['DELETE'])
+def delete_favorite_planet(planet_id):
+    if request.is_json:
+        user_id = request.json.get('user_id')
+    else:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    favorite = Favorite.query.filter_by(user_id=user.id, planet_id=planet_id).first()
+    if not favorite:
+        return jsonify({"error": "Favorite not found"}), 404
+    
+    db.session.delete(favorite)
+    db.session.commit()
+    
+    return jsonify({"message": "Favorite deleted"}), 200
+
+@app.route('/favorite/people/<int:people_id>', methods=['DELETE'])
+def delete_favorite_people(people_id):
+    if request.is_json:
+        user_id = request.json.get('user_id')
+    else:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    favorite = Favorite.query.filter_by(user_id=user.id, people_id=people_id).first()
+    if not favorite:
+        return jsonify({"error": "Favorite not found"}), 404
+    
+    db.session.delete(favorite)
+    db.session.commit()
+    
+    return jsonify({"message": "Favorite deleted"}), 200
 
 # this only runs if `$ python src/app.py` is executed
 if __name__ == '__main__':
